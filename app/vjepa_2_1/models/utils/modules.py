@@ -284,8 +284,9 @@ class RoPEAttention(nn.Module):
 
         if self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
+                dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.proj_drop_prob, is_causal=self.is_causal
+                    q, k, v, dropout_p=dropout_p, is_causal=self.is_causal
                 )
                 attn = None
         else:
@@ -337,8 +338,9 @@ class Attention(nn.Module):
 
         if self.use_sdpa:
             with torch.backends.cuda.sdp_kernel():
+                dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
-                    q, k, v, dropout_p=self.proj_drop_prob, is_causal=self.is_causal
+                    q, k, v, dropout_p=dropout_p, is_causal=self.is_causal
                 )
                 attn = None
         else:
