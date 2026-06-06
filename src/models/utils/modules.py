@@ -7,6 +7,17 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from timm.models.layers import drop_path
+from torch.nn.attention import SDPBackend, sdpa_kernel
+
+# Flash/efficient/math SDPA backends, excluding cuDNN. The deprecated
+# torch.backends.cuda.sdp_kernel() enabled all backends including cuDNN, whose
+# attention fails on H100 for some shapes ("cuDNN Frontend error: No valid
+# execution plans built"). This explicit list keeps the fast fused kernels.
+_SDPA_BACKENDS = [
+    SDPBackend.FLASH_ATTENTION,
+    SDPBackend.EFFICIENT_ATTENTION,
+    SDPBackend.MATH,
+]
 
 
 def build_action_block_causal_attention_mask(T, H, W, add_tokens=1):
@@ -246,7 +257,7 @@ class ACRoPEAttention(nn.Module):
             v = merge_(v, action_v)
 
         if attn_mask is not None or self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel(_SDPA_BACKENDS):
                 dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
                     q, k, v, dropout_p=dropout_p, is_causal=self.is_causal, attn_mask=attn_mask
@@ -371,7 +382,7 @@ class RoPEAttention(nn.Module):
             k = torch.cat([kd, kh, kw], dim=-1)
 
         if attn_mask is not None or self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel(_SDPA_BACKENDS):
                 dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
                     q, k, v, dropout_p=dropout_p, is_causal=self.is_causal, attn_mask=attn_mask
@@ -419,7 +430,7 @@ class Attention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]  # [B, num_heads, N, D]
 
         if attn_mask is not None or self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel(_SDPA_BACKENDS):
                 dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
                     q, k, v, dropout_p=dropout_p, is_causal=self.is_causal, attn_mask=attn_mask
@@ -591,7 +602,7 @@ class CrossAttention(nn.Module):
         k, v = kv[0], kv[1]  # (batch_size, num_heads, seq_len, feature_dim_per_head)
 
         if self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel(_SDPA_BACKENDS):
                 q = F.scaled_dot_product_attention(q, k, v)
         else:
             xattn = (q @ k.transpose(-2, -1)) * self.scale
