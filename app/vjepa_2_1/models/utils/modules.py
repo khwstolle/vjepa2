@@ -7,6 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 from timm.models.layers import drop_path
 
@@ -283,7 +284,7 @@ class RoPEAttention(nn.Module):
             k = torch.cat([kd, kh, kw], dim=-1)
 
         if self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
                 dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
                     q, k, v, dropout_p=dropout_p, is_causal=self.is_causal
@@ -337,7 +338,7 @@ class Attention(nn.Module):
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         if self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
                 dropout_p = self.proj_drop_prob if self.training else 0.0
                 x = F.scaled_dot_product_attention(
                     q, k, v, dropout_p=dropout_p, is_causal=self.is_causal
@@ -485,7 +486,7 @@ class CrossAttention(nn.Module):
         k, v = kv[0], kv[1]
 
         if self.use_sdpa:
-            with torch.backends.cuda.sdp_kernel():
+            with sdpa_kernel([SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]):
                 q = F.scaled_dot_product_attention(q, k, v)
         else:
             xattn = (q @ k.transpose(-2, -1)) * self.scale
